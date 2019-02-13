@@ -1,4 +1,5 @@
 import React, { Component } from "react";
+import md5 from "md5";
 import firebase from "../../firebase";
 import {
   Grid,
@@ -17,7 +18,9 @@ class Register extends Component {
     email: "",
     password: "",
     passwordConfirmation: "",
-    errors: ""
+    errors: [],
+    loading: false,
+    usersRef: firebase.database().ref("users")
   };
 
   handleChange = event => {
@@ -63,19 +66,57 @@ class Register extends Component {
     errors.map((error, i) => <p key={i}>{error.message}</p>);
 
   handleSubmit = event => {
+    event.preventDefault();
     if (this.isFormValid()) {
-      event.preventDefault();
+      this.setState({ errors: [], loading: true });
       firebase
         .auth()
         .createUserWithEmailAndPassword(this.state.email, this.state.password)
         .then(createdUser => {
           console.log(createdUser);
+          createdUser.user
+            .updateProfile({
+              displayName: this.state.username,
+              photoURL: `http://gravatar.com/avatar/${md5(
+                createdUser.user.email
+              )}?d=identicon`
+            })
+            .then(() => {
+              this.saveUser(createdUser).then(() => {
+                console.log("User Saved");
+              });
+
+              this.setState({ loading: false });
+            })
+            .catch(err => {
+              console.error(err);
+              this.setState({
+                errors: this.state.errors.concat(err),
+                loading: false
+              });
+            });
         })
         .catch(err => {
           console.error(err);
+          this.setState({
+            errors: this.state.errors.concat(err),
+            loading: false
+          });
         });
     }
   };
+
+  saveUser = createdUser => {
+    return this.state.usersRef.child(createdUser.user.uid).set({
+      name: createdUser.user.displayName,
+      avatar: createdUser.user.photoURL
+    });
+  };
+
+  handleInputError = (errors, inputName) =>
+    errors.some(error => error.message.toLowerCase().includes(inputName))
+      ? "error"
+      : "";
 
   render() {
     const {
@@ -83,13 +124,14 @@ class Register extends Component {
       email,
       password,
       passwordConfirmation,
-      errors
+      errors,
+      loading
     } = this.state;
 
     return (
       <Grid textAlign="center" verticalAlign="middle" className="app">
         <Grid.Column style={{ maxWidth: 450 }}>
-          <Header as="h2" icon color="orange" textAlign="center">
+          <Header as="h1" icon color="orange" textAlign="center">
             <Icon name="puzzle piece" color="orange" />
             Register for DevChat
           </Header>
@@ -104,6 +146,7 @@ class Register extends Component {
                 onChange={this.handleChange}
                 type="text"
                 value={username}
+                className={this.handleInputError(errors, "username")}
               />
               <Form.Input
                 fluid
@@ -114,6 +157,7 @@ class Register extends Component {
                 onChange={this.handleChange}
                 type="email"
                 value={email}
+                className={this.handleInputError(errors, "email")}
               />
               <Form.Input
                 fluid
@@ -124,6 +168,7 @@ class Register extends Component {
                 onChange={this.handleChange}
                 type="password"
                 value={password}
+                className={this.handleInputError(errors, "password")}
               />
               <Form.Input
                 fluid
@@ -134,9 +179,16 @@ class Register extends Component {
                 onChange={this.handleChange}
                 type="password"
                 value={passwordConfirmation}
+                className={this.handleInputError(errors, "password")}
               />
 
-              <Button color="orange" fluid size="large">
+              <Button
+                disabled={loading}
+                className={loading ? "loading" : ""}
+                color="orange"
+                fluid
+                size="large"
+              >
                 Submit
               </Button>
             </Segment>
